@@ -193,14 +193,14 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
             Mode::PowerDown => match self.update_config(|config| config.set_pwr_up(true)) {
                 Ok(()) => {
                     self.mode = Mode::Standby;
-                    return Ok(());
+                    Ok(())
                 },
                 Err(err) => Err(err),
             },
             Mode::Rx | Mode::Tx => {
                 self.ce_disable();
                 self.mode = Mode::Standby;
-                return Ok(());
+                Ok(())
             },
         }
     }
@@ -210,7 +210,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
             Mode::Standby => match self.update_config(|config| config.set_pwr_up(false)) {
                 Ok(_) => {
                     self.mode = Mode::PowerDown;
-                    return Ok(());
+                    Ok(())
                 },
                 Err(err) => Err(err),
             },
@@ -230,7 +230,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
                 match self.update_config(|config| config.set_prim_rx(true)) {
                     Ok(_) => {
                         self.ce_enable();
-                        return Ok(());
+                        Ok(())
                     },
                     Err(err) => Err(err),
                 }
@@ -272,9 +272,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
     /// interrupt.
     fn can_read(&mut self) -> Result<Option<u8>, Self::Error> {
         if self.mode != Mode::Rx {
-            if let Err(err) = self.to_rx() {
-                return Err(err);
-            }
+            self.to_rx()?;
         }
 
         let mut clear = Status(0);
@@ -301,9 +299,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
     /// mode also takes 130μs.
     fn has_carrier(&mut self) -> Result<bool, Self::Error> {
         if self.mode != Mode::Rx {
-            if let Err(err) = self.to_rx() {
-                return Err(err);
-            }
+            self.to_rx()?;
         }
 
         self.read_register::<CD>()
@@ -313,9 +309,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
     /// Is the RX queue empty?
     fn rx_queue_empty(&mut self) -> Result<bool, Self::Error> {
         if self.mode != Mode::Rx {
-            if let Err(err) = self.to_rx() {
-                return Err(err);
-            }
+            self.to_rx()?;
         }
 
         self.read_register::<FifoStatus>()
@@ -325,9 +319,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
     /// Is the RX queue full?
     fn rx_queue_is_full(&mut self) -> Result<bool, Self::Error> {
         if self.mode != Mode::Rx {
-            if let Err(err) = self.to_rx() {
-                return Err(err);
-            }
+            self.to_rx()?;
         }
 
         self.read_register::<FifoStatus>()
@@ -337,9 +329,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
     /// Read the next received packet
     fn read(&mut self) -> Result<Payload, Self::Error> {
         if self.mode != Mode::Rx {
-            if let Err(err) = self.to_rx() {
-                return Err(err);
-            }
+            self.to_rx()?;
         }
 
         let (_, payload_width) = self.send_command(&ReadRxPayloadWidth)?;
@@ -355,9 +345,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
     fn tx_empty(&mut self) -> Result<bool, Self::Error> {
         if self.mode != Mode::Tx {
-            if let Err(err) = self.to_tx() {
-                return Err(err);
-            }
+            self.to_tx()?;
         }
 
         let (_, fifo_status) = self.read_register::<FifoStatus>()?;
@@ -366,9 +354,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
     fn tx_full(&mut self) -> Result<bool, Self::Error> {
         if self.mode != Mode::Tx {
-            if let Err(err) = self.to_tx() {
-                return Err(err);
-            }
+            self.to_tx()?;
         }
 
         let (_, fifo_status) = self.read_register::<FifoStatus>()?;
@@ -377,9 +363,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
     fn can_send(&mut self) -> Result<bool, Self::Error> {
         if self.mode != Mode::Tx {
-            if let Err(err) = self.to_tx() {
-                return Err(err);
-            }
+            self.to_tx()?;
         }
 
         let full = self.tx_full()?;
@@ -388,9 +372,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
     fn send(&mut self, packet: &[u8]) -> Result<(), Self::Error> {
         if self.mode != Mode::Tx {
-            if let Err(err) = self.to_tx() {
-                return Err(err);
-            }
+            self.to_tx()?;
         }
 
         self.send_command(&WriteTxPayload::new(packet))?;
@@ -443,9 +425,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
     fn wait_empty(&mut self) -> Result<(), Self::Error> {
         if self.mode != Mode::Tx {
-            if let Err(err) = self.to_tx() {
-                return Err(err);
-            }
+            self.to_tx()?;
         }
 
         let mut empty = false;
@@ -476,9 +456,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
     fn observe(&mut self) -> Result<registers::ObserveTx, Self::Error> {
         if self.mode != Mode::Tx {
-            if let Err(err) = self.to_tx() {
-                return Err(err);
-            }
+            self.to_tx()?;
         }
 
         let (_, observe_tx) = self.read_register()?;

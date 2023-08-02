@@ -1,20 +1,17 @@
+//! Configuration Parameters for the NRF24L01+ Board
+
 use crate::PIPES_COUNT;
 
 /// Supported air data rates.
-#[derive(Debug, PartialEq, Clone, Copy)]
+#[derive(Debug, PartialEq, Clone, Copy, Default)]
 pub enum DataRate {
     /// 250 Kbps
     R250Kbps,
     /// 1 Mbps
+    #[default]
     R1Mbps,
     /// 2 Mbps
     R2Mbps,
-}
-
-impl Default for DataRate {
-    fn default() -> DataRate {
-        DataRate::R1Mbps
-    }
 }
 
 /// Supported CRC modes
@@ -94,6 +91,7 @@ pub struct NRF24L01Config<'a> {
 
 impl<'a> NRF24L01Config<'a> {
     /// Creates a new instance of NRF24L01Config with given parameters
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_rate: DataRate,
         crc_mode: CrcMode,

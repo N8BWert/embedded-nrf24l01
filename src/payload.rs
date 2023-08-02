@@ -22,6 +22,11 @@ impl Payload {
     pub fn len(&self) -> usize {
         self.len
     }
+
+    /// See if it is an empty payload
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 impl AsRef<[u8]> for Payload {
@@ -33,6 +38,6 @@ impl AsRef<[u8]> for Payload {
 impl Deref for Payload {
     type Target = [u8];
     fn deref(&self) -> &[u8] {
-        &self.as_ref()
+        self.as_ref()
     }
 }
