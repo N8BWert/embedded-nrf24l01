@@ -1,12 +1,8 @@
-use crate::command::{FlushRx, FlushTx, Nop};
-use crate::device::Device;
-use crate::registers::{
-    Config, Dynpd, EnAa, EnRxaddr, Feature, RfCh, RfSetup, SetupAw, SetupRetr, Status, TxAddr,
-};
+use crate::registers::Config;
 use crate::PIPES_COUNT;
 
 /// Supported air data rates.
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum DataRate {
     /// 250 Kbps
     R250Kbps,
@@ -23,7 +19,7 @@ impl Default for DataRate {
 }
 
 /// Supported CRC modes
-#[derive(Debug, PartialEq, Copy, Clone)]
+#[derive(Debug, PartialEq, Clone, Copy)]
 pub enum CrcMode {
     /// Disable all CRC generation/checking
     Disabled,
@@ -45,260 +41,210 @@ impl CrcMode {
     }
 }
 
-/// Configuration methods
-///
-/// These seem to work in all modes
-pub trait Configuration {
-    /// Underlying [`trait Device`](trait.Device.html)
-    type Inner: Device;
-    /// Get a mutable reference to the underlying device
-    fn device(&mut self) -> &mut Self::Inner;
+/// The Power Amplifier Control Level for the nRF24L01 power amplifier (negative)
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub enum PALevel {
+    /// 0 dBm
+    PA0dBm,
+    /// -6 dBm
+    PA6dBm,
+    /// -12 dBm
+    PA12dBm,
+    /// -18 dBm
+    PA18dBm,
+}
+
+/// Interrupt Masks grouped together into a single struct
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct InterruptMask {
+    /// Trip Interrupt when data is available to be read
+    pub data_ready_rx: bool,
+    /// Trip Interrupt when data has been sent
+    pub data_sent_tx: bool,
+    /// Trip interrupt when the maximum retries has been hit for a transmission
+    pub max_retramsits_tx: bool,
+}
+
+/// Retransmit Configuration grouped together into a single struct
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct RetransmitConfig {
+    /// The number of miliseconds to wait before retrying transmission
+    pub delay: u8,
+    /// The number of retransmissions to attempt
+    pub count: u8,
+}
+
+/// A software struct organizing the configuration of the NRF24L01.  I might end up
+/// changing this because it is technically possible for the hardware to change and
+/// not allert the software
+#[derive(Debug, PartialEq, Clone, Copy)]
+pub struct NRF24L01Config<'a> {
+    /// The rate to send data at
+    pub data_rate: DataRate,
+    /// The crc bit correction mode
+    pub crc_mode: CrcMode,
+    /// The RF channel for this device to listen on
+    pub rf_channel: u8,
+    /// The power amplifier level
+    pub pa_level: PALevel,
+    /// The interrupt mask
+    pub interrupt_mask: InterruptMask,
+    /// The pipes that are to be read from
+    pub read_enabled_pipes: [bool; PIPES_COUNT],
+    /// The addresses to read from (per pipe)
+    pub rx_addr: [&'a [u8]; PIPES_COUNT],
+    /// The address to transmit to
+    pub tx_addr: &'a [u8],
+    /// At what delay and how many times should data be retransmitted
+    pub retransmit_config: RetransmitConfig,
+    /// Should we sent an auto acknowledgement to data received at these pipes
+    pub auto_ack_pipes: [bool; PIPES_COUNT],
+    /// the address width for enhanced shockburst (3-5 bytes)
+    pub address_width: u8,
+    /// The length of data to expect from each pipe
+    pub pipe_payload_lengths: [Option<u8>; PIPES_COUNT],
+}
+
+impl<'a> NRF24L01Config<'a> {
+    /// Creates a new instance of NRF24L01Config with given parameters
+    pub fn new(
+        data_rate: DataRate,
+        crc_mode: CrcMode,
+        rf_channel: u8,
+        pa_level: PALevel,
+        interrupt_mask: InterruptMask,
+        read_enabled_pipes: [bool; PIPES_COUNT],
+        rx_addr: [&'a [u8]; PIPES_COUNT],
+        tx_addr: &'a [u8],
+        retransmit_config: RetransmitConfig,
+        auto_ack_pipes: [bool; PIPES_COUNT],
+        address_width: u8,
+        pipe_payload_lengths: [Option<u8>; PIPES_COUNT],
+    ) -> Self {
+        Self {
+            data_rate,
+            crc_mode,
+            rf_channel,
+            pa_level,
+            interrupt_mask,
+            read_enabled_pipes,
+            rx_addr,
+            tx_addr,
+            retransmit_config,
+            auto_ack_pipes,
+            address_width,
+            pipe_payload_lengths,
+        }
+    }
+}
+
+impl<'a> Default for NRF24L01Config<'a> {
+    fn default() -> Self {
+        Self {
+            data_rate: DataRate::R1Mbps,
+            crc_mode: CrcMode::Disabled,
+            rf_channel: 0u8,
+            pa_level: PALevel::PA18dBm,
+            interrupt_mask: InterruptMask { data_ready_rx: false, data_sent_tx: false, max_retramsits_tx: false },
+            read_enabled_pipes: [false; PIPES_COUNT],
+            rx_addr: [b"rx"; PIPES_COUNT],
+            tx_addr: b"tx",
+            retransmit_config: RetransmitConfig { delay: 0u8, count: 0u8 },
+            auto_ack_pipes: [false; PIPES_COUNT],
+            address_width: 0u8,
+            pipe_payload_lengths: [None; PIPES_COUNT],
+        }
+    }
+}
+
+/// Trait for a device to implement to modify the various aspects of the NRF24L01 Configuration
+pub trait NRF24L01Configuration<'a> {
+    /// The error type to return on unsuccessful operation (most likely SPI error)
+    type Error;
 
     /// Flush RX queue
     ///
     /// Discards all received packets that have not yet been [read](struct.RxMode.html#method.read) from the RX FIFO
-    fn flush_rx(&mut self) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        self.device().send_command(&FlushRx)?;
-        Ok(())
-    }
+    fn flush_rx(&mut self) -> Result<(), Self::Error>;
 
     /// Flush TX queue, discarding any unsent packets
-    fn flush_tx(&mut self) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        self.device().send_command(&FlushTx)?;
-        Ok(())
-    }
+    fn flush_tx(&mut self) -> Result<(), Self::Error>;
 
-    /// Get frequency offset (channel)
-    fn get_frequency(&mut self) -> Result<u8, <<Self as Configuration>::Inner as Device>::Error> {
-        let (_, register) = self.device().read_register::<RfCh>()?;
-        let freq_offset = register.rf_ch();
-        Ok(freq_offset)
-    }
+    /// Set the RF channel to transmit and receive from
+    fn set_rf_channel(&mut self, rf_channel: u8) -> Result<(), Self::Error>;
 
-    /// Set frequency offset (channel)
-    fn set_frequency(
-        &mut self,
-        freq_offset: u8,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        assert!(freq_offset < 126);
+    /// Sets the data rate to transmit data
+    fn set_data_rate(&mut self, rate: DataRate) -> Result<(), Self::Error>;
 
-        let mut register = RfCh(0);
-        register.set_rf_ch(freq_offset);
-        self.device().write_register(register)?;
+    /// Sets the power amplifier level
+    fn set_pa_level(&mut self, power: PALevel) -> Result<(), Self::Error>;
 
-        Ok(())
-    }
-
-    /// power: `0`: -18 dBm, `3`: 0 dBm
-    fn set_rf(
-        &mut self,
-        rate: &DataRate,
-        power: u8,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        assert!(power < 0b100);
-        let mut register = RfSetup(0);
-        register.set_rf_pwr(power);
-
-        let (dr_low, dr_high) = match *rate {
-            DataRate::R250Kbps => (true, false),
-            DataRate::R1Mbps => (false, false),
-            DataRate::R2Mbps => (false, true),
-        };
-        register.set_rf_dr_low(dr_low);
-        register.set_rf_dr_high(dr_high);
-
-        self.device().write_register(register)?;
-        Ok(())
-    }
-
-    /// Set CRC mode
-    fn set_crc(
-        &mut self,
-        mode: CrcMode,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        self.device().update_config(|config| mode.set_config(config))
-    }
+    /// Sets the bit correction mode
+    fn set_crc_mode(&mut self, mode: CrcMode) -> Result<(), Self::Error>;
 
     /// Sets the interrupt mask
-    /// 
-    /// When an interrupt mask is set to true, the interrupt is masked and will not fire on the IRQ pin.
-    /// When set to false, it will trigger the IRQ pin.
-    fn set_interrupt_mask(
-        &mut self,
-        data_ready_rx: bool,
-        data_sent_tx: bool,
-        max_retransmits_tx: bool
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        self.device().update_config(|config| {
-            config.set_mask_rx_dr(data_ready_rx);
-            config.set_mask_tx_ds(data_sent_tx);
-            config.set_mask_max_rt(max_retransmits_tx);
-        })
-    }
+    fn set_interrupt_mask(&mut self, interrupt_mask: InterruptMask) -> Result<(), Self::Error>;
 
-    /// Configure which RX pipes to enable
-    fn set_pipes_rx_enable(
-        &mut self,
-        bools: &[bool; PIPES_COUNT],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        self.device().write_register(EnRxaddr::from_bools(bools))?;
-        Ok(())
-    }
+    /// Sets the pipes that are read-enabled
+    fn set_read_enabled_pipes(&mut self, read_enabled_pipes: &[bool; PIPES_COUNT]) -> Result<(), Self::Error>;
 
-    /// Set address `addr` of pipe number `pipe_no`
-    fn set_rx_addr(
-        &mut self,
-        pipe_no: usize,
-        addr: &[u8],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        macro_rules! w {
-            ( $($no: expr, $name: ident);+ ) => (
-                match pipe_no {
-                    $(
-                        $no => {
-                            use crate::registers::$name;
-                            let register = $name::new(addr);
-                            self.device().write_register(register)?;
-                        }
-                    )+
-                        _ => panic!("No such pipe {}", pipe_no)
-                }
-            )
-        }
-        w!(0, RxAddrP0;
-           1, RxAddrP1;
-           2, RxAddrP2;
-           3, RxAddrP3;
-           4, RxAddrP4;
-           5, RxAddrP5);
-        Ok(())
-    }
+    /// Sets the read address of a specific pipe
+    fn set_rx_addr(&mut self, pipe_no: usize, addr: &'a [u8]) -> Result<(), Self::Error>;
 
-    /// Set address of the TX pipe
-    fn set_tx_addr(
-        &mut self,
-        addr: &[u8],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        let register = TxAddr::new(addr);
-        self.device().write_register(register)?;
-        Ok(())
-    }
+    /// Sets the address to send data to
+    fn set_tx_addr(&mut self, addr: &'a [u8]) -> Result<(), Self::Error>;
 
-    /// Configure auto-retransmit
-    ///
-    /// To disable, call as `set_auto_retransmit(0, 0)`.
-    fn set_auto_retransmit(
-        &mut self,
-        delay: u8,
-        count: u8,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        let mut register = SetupRetr(0);
-        register.set_ard(delay);
-        register.set_arc(count);
-        self.device().write_register(register)?;
-        Ok(())
-    }
+    /// Sets the delay and number of retransmissions for failed transmissions
+    fn set_retransmit_config(&mut self, delay: u8, count: u8) -> Result<(), Self::Error>;
 
-    /// Obtain auto-acknowledgment configuration for all pipes
-    fn get_auto_ack(
-        &mut self,
-    ) -> Result<[bool; PIPES_COUNT], <<Self as Configuration>::Inner as Device>::Error> {
-        // Read
-        let (_, register) = self.device().read_register::<EnAa>()?;
-        Ok(register.to_bools())
-    }
+    /// Sets which pipes should automatically send an ack message
+    fn set_auto_ack(&mut self, auto_ack_pipes: [bool; PIPES_COUNT]) -> Result<(), Self::Error>;
 
-    /// Configure auto-acknowledgment for all RX pipes
-    ///
-    /// TODO: handle switching tx/rx modes when auto-retransmit is enabled
-    fn set_auto_ack(
-        &mut self,
-        bools: &[bool; PIPES_COUNT],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        // Convert back
-        let register = EnAa::from_bools(bools);
-        // Write back
-        self.device().write_register(register)?;
-        Ok(())
-    }
+    /// Sets the width of the address for outgoing and incoming transmissions (between 3 and 5 bytes)
+    fn set_address_width(&mut self, width: u8) -> Result<(), Self::Error>;
 
-    /// Get address width configuration
-    fn get_address_width(
-        &mut self,
-    ) -> Result<u8, <<Self as Configuration>::Inner as Device>::Error> {
-        let (_, register) = self.device().read_register::<SetupAw>()?;
-        Ok(2 + register.aw())
-    }
+    /// Sets the expected payload length for each of the rx pipes (defaults to None = dynamic payload length)
+    fn set_pipes_payload_lengths(&mut self, lengths: [Option<u8>; PIPES_COUNT]) -> Result<(), Self::Error>;
 
-    /// Set address width configuration
-    fn set_address_width(&mut self, width: u8)
-        -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
+    /// Sets all of the fields of the nrf configuration
+    fn set_nrf_configuration(&mut self, configuration: NRF24L01Config<'a>) -> Result<(), Self::Error>;
 
-        let register = SetupAw(width - 2);
-        self.device().write_register(register)?;
-        Ok(())
-    }
+    /// Gets the data transmission rate
+    fn get_data_rate(&self) -> DataRate;
 
-    /// Obtain interrupt pending status as `(RX_DR, TX_DR, MAX_RT)`
-    /// where `RX_DR` indicates new data in the RX FIFO, `TX_DR`
-    /// indicates that a packet has been sent, and `MAX_RT` indicates
-    /// maximum retransmissions without auto-ack.
-    fn get_interrupts(
-        &mut self,
-    ) -> Result<(bool, bool, bool), <<Self as Configuration>::Inner as Device>::Error> {
-        let (status, ()) = self.device().send_command(&Nop)?;
-        Ok((status.rx_dr(), status.tx_ds(), status.max_rt()))
-    }
+    /// Gets the bit correction mode
+    fn get_crc_mode(&self) -> CrcMode;
 
-    /// Clear all interrupts
-    fn clear_interrupts(
-        &mut self,
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        let mut clear = Status(0);
-        clear.set_rx_dr(true);
-        clear.set_tx_ds(true);
-        clear.set_max_rt(true);
-        self.device().write_register(clear)?;
-        Ok(())
-    }
+    /// Gets the radio channel
+    fn get_rf_channel(&self) -> u8;
 
-    /// ## `bools`
-    /// * `None`: Dynamic payload length
-    /// * `Some(len)`: Static payload length `len`
-    fn set_pipes_rx_lengths(
-        &mut self,
-        lengths: &[Option<u8>; PIPES_COUNT],
-    ) -> Result<(), <<Self as Configuration>::Inner as Device>::Error> {
-        // Enable dynamic payload lengths
-        let mut bools = [true; PIPES_COUNT];
-        for (i, length) in lengths.iter().enumerate() {
-            bools[i] = length.is_none();
-        }
-        let dynpd = Dynpd::from_bools(&bools);
-        if dynpd.0 != 0 {
-            self.device().update_register::<Feature, _, _>(|feature| {
-                feature.set_en_dpl(true);
-            })?;
-        }
-        self.device().write_register(dynpd)?;
+    /// Gets the radio's power amplification level
+    fn get_pa_level(&self) -> PALevel;
 
-        // Set static payload lengths
-        macro_rules! set_rx_pw {
-            ($name: ident, $index: expr) => {{
-                use crate::registers::$name;
-                let length = lengths[$index].unwrap_or(0);
-                let mut register = $name(0);
-                register.set(length);
-                self.device().write_register(register)?;
-            }};
-        }
-        set_rx_pw!(RxPwP0, 0);
-        set_rx_pw!(RxPwP1, 1);
-        set_rx_pw!(RxPwP2, 2);
-        set_rx_pw!(RxPwP3, 3);
-        set_rx_pw!(RxPwP4, 4);
-        set_rx_pw!(RxPwP5, 5);
+    /// Gets the interrupt mask for the radio
+    fn get_interrupt_mask(&self) -> InterruptMask;
 
-        Ok(())
-    }
+    /// Gets an array of pipes with whether/not they are read enabled
+    fn get_read_enabled_pipes(&self) -> [bool; PIPES_COUNT];
+
+    /// Gets the rx addresses of each pipe
+    fn get_rx_addr(&self) -> [&'a [u8]; PIPES_COUNT];
+
+    /// Gets the tx address
+    fn get_tx_addr(&self) -> &'a [u8];
+
+    /// Get configuration for retransmits
+    fn get_retransmit_config(&self) -> RetransmitConfig;
+    
+    /// Get a list of pipes with whether or not they will auto acknowledge
+    fn get_auto_ack_pipes(&self) -> [bool; PIPES_COUNT];
+
+    /// Gets the address with (between 3-5 bytes)
+    fn get_address_width(&self) -> u8;
+
+    /// Gets the payload length of each pipe
+    fn get_pipe_payload_lengths(&self) -> [Option<u8>; PIPES_COUNT];
+
+    /// Gets the full NRF24L01 configuraiton
+    fn get_config(&self) -> NRF24L01Config;
 }
