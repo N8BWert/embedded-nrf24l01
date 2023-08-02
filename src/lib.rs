@@ -16,20 +16,18 @@ extern crate bitfield;
 use core::fmt;
 use core::fmt::Debug;
 
-use command::FlushRx;
-use config::{NRF24L01Configuration, PALevel, RetransmitConfig};
 use embedded_hal::blocking::spi::Transfer as SpiTransfer;
 use embedded_hal::digital::v2::OutputPin;
-use registers::{RfSetup, EnRxaddr, TxAddr, SetupRetr, EnAa, Dynpd, Feature};
 
 pub mod config;
-pub use crate::config::{CrcMode, DataRate, NRF24L01Config};
+pub use crate::config::{CrcMode, DataRate, NRF24L01Config, NRF24L01Configuration, PALevel, RetransmitConfig};
 pub mod setup;
 
 mod registers;
 use crate::registers::{Config, Register, SetupAw, Status, FifoStatus, CD, RfCh};
+use crate::registers::{RfSetup, EnRxaddr, TxAddr, SetupRetr, EnAa, Dynpd, Feature};
 mod command;
-use crate::command::{Command, ReadRegister, WriteRegister, ReadRxPayloadWidth, ReadRxPayload, WriteTxPayload, FlushTx};
+use crate::command::{Command, ReadRegister, WriteRegister, ReadRxPayloadWidth, ReadRxPayload, WriteTxPayload, FlushTx, FlushRx};
 mod payload;
 pub use crate::payload::Payload;
 mod error;

@@ -1,4 +1,3 @@
-use crate::registers::Config;
 use crate::PIPES_COUNT;
 
 /// Supported air data rates.
@@ -27,18 +26,6 @@ pub enum CrcMode {
     OneByte,
     /// Two bytes checksum
     TwoBytes,
-}
-
-impl CrcMode {
-    fn set_config(&self, config: &mut Config) {
-        let (en_crc, crco) = match *self {
-            CrcMode::Disabled => (false, false),
-            CrcMode::OneByte => (true, false),
-            CrcMode::TwoBytes => (true, true),
-        };
-        config.set_en_crc(en_crc);
-        config.set_crco(crco);
-    }
 }
 
 /// The Power Amplifier Control Level for the nRF24L01 power amplifier (negative)
