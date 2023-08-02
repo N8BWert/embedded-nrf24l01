@@ -7,10 +7,6 @@
 * Chip operation modes lifted to the type-level
 * Lets you go straight into RX/TX with the default config
 
-### Still missing
-
-* Auto-ack support
-
 ## Reference datasheets
 
 * [nRF24L01+](https://www.sparkfun.com/datasheets/Components/SMD/nRF24L01Pluss_Preliminary_Product_Specification_v1_0.pdf)
@@ -35,26 +31,45 @@ to get to the peripherals implementing these [embedded-hal] traits:
 
 ### Constructor
 
+
+#### Default Configuration
+
 ```rust
 let mut nrf24 = NRF24L01::new(ce, csn, spi).unwrap();
 ```
 
 This will provide an instance of the NRF24L01 device in standby mode. To convert to different modes you can call `.to_rx()` to switch to Rx mode, `.to_tx()` for Tx mode, `.to_standby` for Standby Mode, and `.to_power_down()` to power down the device.  You can also just call a method belonging to a specific mode (i.e. `send()` for Tx mode) to switch to the given mode before conducting the given instruction.
 
+#### Specified Configuration
+
+```rust
+let mut nrf24 = NRF24L01::new_with_config(ce, csn, spi, nrf_config).unwrap();
+```
+
+This will provide an instance of the NRF24L01 in standby mode (as above), but will also use the configuration provided to establish the nrf driver.
 
 ### Configuration
 
-Before you start transmission, the device must be configured. Example:
+Before you start transmission, the device must be configured.
 
-```rust
-nrf24.set_channel(8)?;
-nrf24.set_auto_retransmit(0, 0)?;
-nrf24.set_rf(&nrf24::DataRate::R2Mbps, 3)?;
-nrf24.set_pipes_rx_enable(&[true, false, false, false, false, false])?;
-nrf24.set_auto_ack(&[false; 6])?;
-nrf24.set_crc(&nrf24::CrcMode::Disabled)?;
-nrf24.set_tx_addr(&b"fnord"[..])?;
-```
+#### Configuration Options (+ Defaults)
+
+- data_rate (`DataRate`): the rate to send data at (defaults to 250Kbps)
+- crc_mode (`CrcMode`): the crc bit correction mode (defaults to Disabled)
+- rf_channel (`u8`): the channel for this device to connect to (defaults to 0)
+- pa_level (`PALevel`): the level of the device's power amplifier (defaults to -18dBm)
+- interrupt_mask (`InterruptMask`): the interrupt mask (defaults to `000` or interrupts from data_ready_rx, data_set_tx, and max_transmits_tx are disabled)
+- read_enabled_pipes (`[bool; 6]`): The pipes to read from (defaults to [`[false; 6]`])
+- rx_addrs (`[&[u8]; 6]`): the addresses for each rx pipe to listen to (defaults to `[b"rx"; 6]`)
+- tx_addr (`&[u8]`): the address to send data to (defaults to b"tx")
+- retransmit_config (`RetransmitConfig`): the delay (ms) and number of times to resend packets when they are dropped (or not acknowledged) (defaults to {delay: 0, count: 0})
+- auto_ack_pipes (`[bool; 6]`): the pipes configured to automatically acknowledge incoming messages
+- address_width (`u8`): the width of the address to be used (between 3-5 bytes) (defaults to 3)
+- pipe_payload_lengths (`[Option<u8>; 6]`): the length of the payload expected from each pipe (defaults to [None; 6] -- unknown/flexible payload length)
+
+#### Setting single configurations
+
+Getters and Setters are also provided on the nrf24l01 device to set and get any of the above configuration options.
 
 ### `RXMode`
 
