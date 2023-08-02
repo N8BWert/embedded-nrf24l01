@@ -39,10 +39,7 @@ to get to the peripherals implementing these [embedded-hal] traits:
 let mut nrf24 = NRF24L01::new(ce, csn, spi).unwrap();
 ```
 
-This will provide an instance of `Standby`. You can use `.rx()` or
-`.tx()` to transfer into a `RXMode` and `TXMode` instances. They
-implement `.standby()` methods to get back to `Standby` and then
-switch to the other mode.
+This will provide an instance of the NRF24L01 device in standby mode. To convert to different modes you can call `.to_rx()` to switch to Rx mode, `.to_tx()` for Tx mode, `.to_standby` for Standby Mode, and `.to_power_down()` to power down the device.  You can also just call a method belonging to a specific mode (i.e. `send()` for Tx mode) to switch to the given mode before conducting the given instruction.
 
 
 ### Configuration
@@ -66,10 +63,14 @@ Use `rx.can_read()` to poll (returning the pipe number), then
 
 ### `TXMode`
 
-Use `tx.send()` to enqueue a packet.
+Use `send(packet: &[u8])` to enqueue a packet.
 
-Use `tx.can_send()` to prevent sending on a full queue, and
-`tx.wait_empty()` to flush.
+Use `can_send()` to prevent sending on a full queue, and
+`wait_empty()` to flush.
 
 
 [embedded-hal]: https://crates.io/crates/embedded-hal
+
+## Note
+
+I forked this from [astro/embedded-nrf24l01](https://github.com/astro/embedded-nrf24l01/tree/master) because I wanted to use the nRF24L01 radio with RTIC and consuming the radio instance did not play well with RTIC's shared and local memory systems.  Therefore, this repo is literally Astro's work just repackaged to play a bit better with RTIC.
