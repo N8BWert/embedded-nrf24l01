@@ -76,7 +76,7 @@ pub struct NRF24L01Config<'a> {
     /// The pipes that are to be read from
     pub read_enabled_pipes: [bool; PIPES_COUNT],
     /// The addresses to read from (per pipe)
-    pub rx_addr: [&'a [u8]; PIPES_COUNT],
+    pub rx_addrs: [&'a [u8]; PIPES_COUNT],
     /// The address to transmit to
     pub tx_addr: &'a [u8],
     /// At what delay and how many times should data be retransmitted
@@ -99,7 +99,7 @@ impl<'a> NRF24L01Config<'a> {
         pa_level: PALevel,
         interrupt_mask: InterruptMask,
         read_enabled_pipes: [bool; PIPES_COUNT],
-        rx_addr: [&'a [u8]; PIPES_COUNT],
+        rx_addrs: [&'a [u8]; PIPES_COUNT],
         tx_addr: &'a [u8],
         retransmit_config: RetransmitConfig,
         auto_ack_pipes: [bool; PIPES_COUNT],
@@ -113,7 +113,7 @@ impl<'a> NRF24L01Config<'a> {
             pa_level,
             interrupt_mask,
             read_enabled_pipes,
-            rx_addr,
+            rx_addrs,
             tx_addr,
             retransmit_config,
             auto_ack_pipes,
@@ -132,11 +132,11 @@ impl<'a> Default for NRF24L01Config<'a> {
             pa_level: PALevel::PA18dBm,
             interrupt_mask: InterruptMask { data_ready_rx: false, data_sent_tx: false, max_retramsits_tx: false },
             read_enabled_pipes: [false; PIPES_COUNT],
-            rx_addr: [b"rx"; PIPES_COUNT],
+            rx_addrs: [b"rx"; PIPES_COUNT],
             tx_addr: b"tx",
             retransmit_config: RetransmitConfig { delay: 0u8, count: 0u8 },
             auto_ack_pipes: [false; PIPES_COUNT],
-            address_width: 0u8,
+            address_width: 3u8,
             pipe_payload_lengths: [None; PIPES_COUNT],
         }
     }
@@ -174,7 +174,7 @@ pub trait NRF24L01Configuration<'a> {
     fn set_read_enabled_pipes(&mut self, read_enabled_pipes: &[bool; PIPES_COUNT]) -> Result<(), Self::Error>;
 
     /// Sets the read address of a specific pipe
-    fn set_rx_addr(&mut self, pipe_no: usize, addr: &'a [u8]) -> Result<(), Self::Error>;
+    fn set_rx_addrs(&mut self, pipe_no: usize, addr: &'a [u8]) -> Result<(), Self::Error>;
 
     /// Sets the address to send data to
     fn set_tx_addr(&mut self, addr: &'a [u8]) -> Result<(), Self::Error>;
@@ -213,7 +213,7 @@ pub trait NRF24L01Configuration<'a> {
     fn get_read_enabled_pipes(&self) -> [bool; PIPES_COUNT];
 
     /// Gets the rx addresses of each pipe
-    fn get_rx_addr(&self) -> [&'a [u8]; PIPES_COUNT];
+    fn get_rx_addrs(&self) -> [&'a [u8]; PIPES_COUNT];
 
     /// Gets the tx address
     fn get_tx_addr(&self) -> &'a [u8];

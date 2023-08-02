@@ -78,8 +78,8 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: SpiTransfer<u8, Error = SPIE>, SPIE: Debug>
     NRF24L01<'a, E, CE, CSN, SPI>
 {
-    /// Construct a new driver instance.
-    pub fn new(mut ce: CE, mut csn: CSN, spi: SPI) -> Result<Self, Error<SPIE>> {
+    /// Construct a new driver instance with specified configuration.
+    pub fn new_with_config(mut ce: CE, mut csn: CSN, spi: SPI, nrf_config: NRF24L01Config<'a>) -> Result<Self, Error<SPIE>> {
         ce.set_low().unwrap();
         csn.set_high().unwrap();
 
@@ -94,7 +94,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
             spi,
             config,
             mode: Mode::Standby,
-            nrf_config: NRF24L01Config::default(),
+            nrf_config,
         };
 
         match device.is_connected() {
@@ -105,10 +105,17 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
 
         // TODO: activate features?
 
+        device.set_nrf_configuration(nrf_config)?;
+
         match device.update_config(|config| config.set_pwr_up(true)) {
             Ok(_) => Ok(device),
             Err(err) => Err(err),
         }
+    }
+
+    /// Constructs a new driver instance with default configuration
+    pub fn new(ce: CE, csn: CSN, spi: SPI) -> Result<Self, Error<SPIE>> {
+        NRF24L01::new_with_config(ce, csn, spi, NRF24L01Config::default())
     }
 
     /// Reads and validates content of the `SETUP_AW` register.
@@ -583,7 +590,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
         }
     }
 
-    fn set_rx_addr(&mut self, pipe_no: usize, addr: &'a [u8]) -> Result<(), Self::Error> {
+    fn set_rx_addrs(&mut self, pipe_no: usize, addr: &'a [u8]) -> Result<(), Self::Error> {
         macro_rules! w {
             ( $($no: expr, $name: ident);+ ) => (
                 match pipe_no {
@@ -605,7 +612,7 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
            4, RxAddrP4;
            5, RxAddrP5);
 
-        self.nrf_config.rx_addr[pipe_no] = addr;
+        self.nrf_config.rx_addrs[pipe_no] = addr;
         Ok(())
     }
 
@@ -699,9 +706,9 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
             self.set_read_enabled_pipes(&configuration.read_enabled_pipes)?;
         }
 
-        if configuration.rx_addr != self.nrf_config.rx_addr {
-            for (pipe_no, addr) in configuration.rx_addr.iter().enumerate() {
-                self.set_rx_addr(pipe_no, addr)?;
+        if configuration.rx_addrs != self.nrf_config.rx_addrs {
+            for (pipe_no, addr) in configuration.rx_addrs.iter().enumerate() {
+                self.set_rx_addrs(pipe_no, addr)?;
             }
         }
 
@@ -752,8 +759,8 @@ impl<'a, E: Debug, CE: OutputPin<Error = E>, CSN: OutputPin<Error = E>, SPI: Spi
         self.nrf_config.read_enabled_pipes
     }
 
-    fn get_rx_addr(&self) -> [&'a [u8]; PIPES_COUNT] {
-        self.nrf_config.rx_addr
+    fn get_rx_addrs(&self) -> [&'a [u8]; PIPES_COUNT] {
+        self.nrf_config.rx_addrs
     }
 
     fn get_tx_addr(&self) -> &'a [u8] {
